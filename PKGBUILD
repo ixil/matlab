@@ -49,14 +49,29 @@ fi
 
 prepare() {
   msg2 'Creating desktop file'
-  gendesk -f -n --pkgname "${pkgname}" --pkgdesc "${pkgdesc}" --categories "Development;Education;Science;Mathematics;IDE" > /dev/null
+  gendesk -f -n --pkgname "${pkgname}" \
+                --pkgdesc "${pkgdesc}" \
+                --categories "Development;Education;Science;Mathematics;IDE" \
+                --mimetypes 'text/x-matlab' \
+                > /dev/null
   sed -i "/^Exec=/ s,$, -desktop," "${srcdir}/${pkgname}.desktop"
 
+
+  msg2 'Creating command line executable'
+  echo -e "#!/bin/sh\nmatlab -nodesktop -nosplash" > "${srcdir}/matlab-cli"
+
+  # If you never let MATLAB connect to the internet or run MATLAB on a server
+  # the Java version it includes should be fine but otherwise the outdated
+  # Java that ships with MATLAB is a security risk.
+  msg2 'Creating profile.d files'
+  echo -e "export MATLAB_JAVA=/usr/lib/jvm/java-8-openjdk/jre" > "${srcdir}/matlab.sh"
+  echo -e "setenv MATLAB_JAVA /usr/lib/jvm/java-8-openjdk/jre" > "${srcdir}/matlab.csh"
+  
   msg2 'Extracting file installation key'
   _fik=$(grep -o [0-9-]* ${pkgname}.fik)
 
   msg2 'Modifying the installer settings'
-  sed -i "s,^# destinationFolder=,destinationFolder=${pkgdir}/opt/tmw/${pkgname}/," "${srcdir}/installer_input.txt"
+  sed -i "s,^# destinationFolder=,destinationFolder=${pkgdir}/opt/${pkgname}/," "${srcdir}/installer_input.txt"
   sed -i "s,^# agreeToLicense=,agreeToLicense=yes," "${srcdir}/installer_input.txt"
   sed -i "s,^# mode=,mode=silent," "${srcdir}/installer_input.txt"
   sed -i "s,^# fileInstallationKey=,fileInstallationKey=${_fik}," "${srcdir}/installer_input.txt"
@@ -76,44 +91,51 @@ package_matlab() {
   "${srcdir}/install" -t -inputFile "${srcdir}/installer_input.txt" -mode silent
 
   msg2 'Installing license'
-  install -D -m644 "${pkgdir}/opt/tmw/${pkgname}/license_agreement.txt" "${pkgdir}/usr/share/licenses/tmw/${pkgname}/LICENSE"
+  install -D -m644 "${pkgdir}/opt/${pkgname}/license_agreement.txt" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 
   msg2 'Creating links for license'
   rm -rf "${srcdir}/licenses"
-  mv "${pkgdir}/opt/tmw/${pkgname}/licenses" "${srcdir}/licenses"
-  mkdir -p "${pkgdir}/opt/tmw/${pkgname}/licenses"
+  mv "${pkgdir}/opt/${pkgname}/licenses" "${srcdir}/licenses"
+  mkdir -p "${pkgdir}/opt/${pkgname}/licenses"
 
   msg2 'Creating links for executables'
   install -d -m755 "${pkgdir}/usr/bin/"
   for _executable in deploytool matlab mbuild mcc; do
-    ln -s "/opt/tmw/${pkgname}/bin/${_executable}" "${pkgdir}/usr/bin/${_executable}"
+    ln -s "/opt/${pkgname}/bin/${_executable}" "${pkgdir}/usr/bin/${_executable}"
   done
-  ln -s "/opt/tmw/${pkgname}/bin/mex" "${pkgdir}/usr/bin/mex-$pkgbase"
+  ln -s "/opt/${pkgname}/bin/mex" "${pkgdir}/usr/bin/mex-$pkgbase"
 
   msg2 'Installing desktop files'
   install -D -m644 "${pkgname}.desktop" "${pkgdir}/usr/share/applications/${pkgname}.desktop"
-  install -D -m644 "${pkgdir}/opt/tmw/${pkgname}/help/matlab/matlab_env/matlab_desktop_icon.png" "${pkgdir}/usr/share/pixmaps/${pkgname}.png"
+  install -D -m644 "${pkgdir}/opt/${pkgname}/help/matlab/matlab_env/matlab_desktop_icon.png" "${pkgdir}/usr/share/pixmaps/${pkgname}.png"
 
   msg2 'Configuring mex options'
-  sed -i "s#CC='gcc'#CC='gcc-6'#g" "${pkgdir}/opt/tmw/${pkgname}/bin/mexopts.sh"
-  sed -i "s#CXX='g++'#CXX='g++-6'#g" "${pkgdir}/opt/tmw/${pkgname}/bin/mexopts.sh"
-  sed -i "s#FC='gfortran'#FC='gfortran-6'#g" "${pkgdir}/opt/tmw/${pkgname}/bin/mexopts.sh"
+  sed -i "s#CC='gcc'#CC='gcc-6'#g" "${pkgdir}/opt/${pkgname}/bin/mexopts.sh"
+  sed -i "s#CXX='g++'#CXX='g++-6'#g" "${pkgdir}/opt/${pkgname}/bin/mexopts.sh"
+  sed -i "s#FC='gfortran'#FC='gfortran-6'#g" "${pkgdir}/opt/${pkgname}/bin/mexopts.sh"
 
   # See $MATLABROOT/sys/os/glnxa64/README.libstdc++
   msg2 'Removing unused library files'
-  rm ${pkgdir}/opt/tmw/${pkgname}/sys/os/glnxa64/{libstdc++.so.6.0.22,libstdc++.so.6,libgcc_s.so.1,libgfortran.so.3.0.0,libgfortran.so.3,libquadmath.so.0.0.0,libquadmath.so.0}
+  rm ${pkgdir}/opt/${pkgname}/sys/os/glnxa64/{libstdc++.so.6.0.22,libstdc++.so.6,libgcc_s.so.1,libgfortran.so.3.0.0,libgfortran.so.3,libquadmath.so.0.0.0,libquadmath.so.0}
 
   # https://bbs.archlinux.org/viewtopic.php?id=236821
-  rm ${pkgdir}/opt/tmw/${pkgname}/bin/glnxa64/libfreetype.*
+  rm ${pkgdir}/opt/${pkgname}/bin/glnxa64/libfreetype.*
 
+  msg2 'Installing command line executable'
+  install -D -m755 'matlab-cli' "${pkgdir}/usr/bin/matlab-cli"
+
+  msg2 'Installing profile.d files'
+  install -D -m644 'matlab.sh' "${pkgdir}/etc/profile.d/matlab.sh"
+  install -D -m644 'matlab.csh' "${pkgdir}/etc/profile.d/matlab.csh"
+    
   # make sure MATLAB can find libgfortran.so.3
   sed -i 's,LD_LIBRARY_PATH="`eval echo $LD_LIBRARY_PATH`",LD_LIBRARY_PATH="`eval echo $LD_LIBRARY_PATH`:/usr/lib/gcc/x86_64-pc-linux-gnu/'$(pacman -Q gcc6 | awk '{print $2}' | cut -d- -f1)'",g' "${pkgdir}/opt/tmw/matlab/bin/matlab"
 }
 
 package_matlab-licenses() {
   depends=('matlab')
-  mkdir -p "${pkgdir}/opt/tmw/${pkgbase}"
-  mv "${srcdir}/licenses" "${pkgdir}/opt/tmw/${pkgbase}/licenses"
+  mkdir -p "${pkgdir}/opt/${pkgbase}"
+  mv "${srcdir}/licenses" "${pkgdir}/opt/${pkgbase}/licenses"
 }
 
 if [ ! -z ${_partialinstall+isSet} ] && [ -z ${_products+isSet} ]; then
